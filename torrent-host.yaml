@@ -1,0 +1,122 @@
+# This script will set up a seed box with jackett, sonarr, and radarr
+# Run with " ansible-playbook setup.yml -i <host>, -u <username> -Kk -l 'all'" for now
+# TODO - fix host list and groups
+# TODO - use ansible vault
+# TODO - parameterize directories
+# TODO - Create a startup script to start PVPN and Jackett
+
+- name: Install Base Software
+  become: yes
+  gather_facts: no
+  hosts:
+    - all 
+
+  pre_tasks:
+    - name: Check Limit
+      fail:
+        msg: "Please specify the hosts or groups to run on using command line: -l 'host1,group1,etc'"
+      when: ansible_limit is not defined
+
+  tasks:
+    - name: Check if my_package is installed
+      command: dpkg-query -W protonvpn-stable-release_1.0.1-1_all.deb
+      register: protonvpn_check_deb
+      failed_when: protonvpn_check_deb.rc > 1
+      changed_when: protonvpn_check_deb.rc == 1
+          
+    - name: Download ProtonVPN .deb Package
+      get_url: 
+        url="https://protonvpn.com/download/protonvpn-stable-release_1.0.1-1_all.deb"
+        dest="/home/{{ user }}/Downloads/protonvpn.deb"
+      when: protonvpn_check_deb.rc == 1
+
+    - name: Install ProtonVPN Repo
+      apt: deb="/home/{{ user }}/Downloads/protonvpn.deb"
+      when: protonvpn_check_deb.rc == 1
+
+    - name: Update Packages List
+      command: apt-get update
+      become: yes
+      # TODO - set this to only run if PVPN is not installed
+
+    - name: Install ProtonVPN
+      become: yes
+      apt:
+        name: 'protonvpn'
+
+    - name: Install QBittorrent
+      become: yes
+      apt:
+        name: 'qbittorrent'
+
+    - name: Install Jackett Dependencies
+      become: yes
+      apt:
+        name: gnupg
+        name: ca-certifications
+        name: git
+        name: curl
+        #- name: Install Git
+        #become: yes
+        #apt: 
+        #name: 'git'
+
+    - name: Add Mono's Official Key
+      apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: 36A1D7869245C8950F966E92D8576A8BA88D21E9
+
+
+    - name: Add Mono Project's Apt Repository
+      #apt_repository:
+      #  repo: 'deb https://download.mono-project.com/repo/ubuntu stable-focal main'
+      #  state: present
+      #  filename: mono-official-stable.list
+      #  update_cache: yes
+      become: yes
+      command: echo "deb https://download.mono-project.com/repo/ubuntu stable-focal main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+
+       
+    - name: Install mono-devel Package
+      become: yes
+      apt:
+        name: mono-devel
+
+    - name: Clone Jackett Repo
+      become: yes
+      git:
+        repo: https://github.com/Jackett/Jackett.git
+        dest: /home/{{ user }}/repos/jackett
+        clone: yes
+        update: yes
+
+    - name: Download Latest Jackett Release
+      become: yes
+      #command: curl https://github.com/Jackett/Jackett/releases/download/v0.20.1254/Jackett.Binaries.LinuxAMDx64.tar.gz
+      #args:
+      #  chdir: /home/mordor/Downloads
+      get_url:
+        url: https://github.com/Jackett/Jackett/releases/download/v0.20.1254/Jackett.Binaries.LinuxAMDx64.tar.gz
+        dest: /home/{{ user }}/Downloads/
+
+    - name: Extract Latest Jackett Release
+      become: yes
+      command: tar -xvzf Jackett.Binaries.LinuxAMDx64.tar.gz
+      args:
+        chdir: /home/{{ user }}/Downloads/
+
+        # - name: Start Jackett
+        #command: ./Jackett/jackett
+        #args: 
+        #chdir: /home/{{ user }}/Downloads
+    
+    - name: Download Flaresolverr
+      get_url: 
+        url: https://github.com/FlareSolverr/FlareSolverr/releases/download/v2.2.4/flaresolverr-v2.2.4-linux-x64.zip
+        dest: /home/{{ user }}/Downloads/
+
+    - name: Extract Flaresolverr
+      become: yes
+      command: unzip flaresolverr-v2.2.4-linux-x64.zip
+      args:
+        chdir: /home/{{ user }}/Downloads
